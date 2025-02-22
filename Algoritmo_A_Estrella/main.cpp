@@ -8,8 +8,7 @@
 #include <unordered_set>
 #include <SFML/Graphics.hpp>
 #include <nlohmann/json.hpp>
-
-#include <conio.h>
+#include <string>
 
 #define M_PI 3.141592
 using json = nlohmann::json;
@@ -22,8 +21,8 @@ struct Nodo {
 
     // Campos para el algoritmo A*
     Nodo* predecesor;
-    float h; // Costo real desde el nodo inicial
-    float g; // Costo estimado hasta llegar al nodo final
+    float g; // Costo real desde el nodo inicial
+    float h; // Costo estimado hasta llegar al nodo final
 
     Nodo(long long id_, sf::Vector2f pos_);
 };
@@ -32,7 +31,7 @@ Nodo::Nodo(long long id_, sf::Vector2f pos_) : id(id_), pos(pos_), predecesor(nu
 h(0.f), g(std::numeric_limits<float>::infinity()) {
     circulo.setPosition(pos);
     circulo.setFillColor(sf::Color::Red);
-    circulo.setRadius(5.f);
+    circulo.setRadius(25.f);
     circulo.move(sf::Vector2f(-circulo.getRadius(), -circulo.getRadius()));
 }
 
@@ -61,7 +60,7 @@ sf::RectangleShape marcoGrafo;
 
 // Variables para el algoritmo A*
 Nodo* nodoInicio = nullptr;
-Nodo* nodoFinal = nullptr;
+Nodo* nodoDestino = nullptr;
 std::set<Nodo*, CompararNodo> nodosPorVisitar;
 std::unordered_set<Nodo*> nodosVisitados;
 std::vector<Arco*> camino;
@@ -94,7 +93,7 @@ bool algoritm_A_Estrella() {
             nodosPorVisitar.insert(it);  // Reinsertar con el nuevo costo
         }
 
-        if (it->id == nodoFinal->id) {
+        if (it->id == nodoDestino->id) {
             std::cout << "Bingo!" << std::endl;
             return false;  // Terminamos porque encontramos el nodo final
         }
@@ -103,7 +102,7 @@ bool algoritm_A_Estrella() {
     return true;
 }
 
-// Inicializa los valores h de TODOS los nodos del grafo. No recomendado...
+// Inicializa los valores h de TODOS los nodos del grafo
 void inicializarHeuristicos(const sf::Vector2f& nodoFinalPos) {
     for (auto& it : nodos) {
         it->h = dist(it->pos, nodoFinalPos);
@@ -133,11 +132,11 @@ void seleccionarNodo(sf::Vector2f mousePos, Nodo*& nodoPtr, const sf::Color& col
     std::cout << "No se selecciono ningun nodo." << std::endl;
 }
 
-void cargarArchivoJSON(json& graph_data, const char nombre[]) {
+bool cargarArchivoJSON(json& graph_data, const char nombre[]) {
     std::ifstream file(nombre);
     if (!file.is_open()) {
         std::cerr << "Error: No se pudo abrir " << nombre << std::endl;
-        return;
+        return false;
     }
 
     try {
@@ -145,13 +144,14 @@ void cargarArchivoJSON(json& graph_data, const char nombre[]) {
     }
     catch (json::parse_error& e) {
         std::cerr << "JSON Parse Error: " << e.what() << std::endl;
-        return;
+        return false;
     }
 
     file.close();
+    return true;
 }
 
-void leerArcos(json& graph_data) {
+bool leerArcos(json& graph_data) {
     std::cout << "Generando arcos... ";
     for (auto& arco_it : graph_data["arcos"]) {
         try {
@@ -183,21 +183,21 @@ void leerArcos(json& graph_data) {
             }
             else {
                 std::cout << "Error: No se encontraron los nodos al crear arco." << std::endl;
-                return;
+                return false;
             }
 
             arcos.push_back(new Arco(src_ptr->pos, tgt_ptr->pos, sf::Color(127, 127, 127)));
         }
         catch (std::exception& e) {
-            std::cerr << "Error processing edge: " << e.what() << std::endl;
-            return;
+            std::cerr << "Error procesando arco: " << e.what() << std::endl;
+            return false;
         }
     }
     std::cout << arcos.size() << " arcos generados." << std::endl;
+    return true;
 }
 
-void leerNodos(json& graph_data) {
-
+bool leerNodos(json& graph_data) {
     // Primero nodo se posiciona en el origen de la ventana SFML (0, 0)
     auto primer_nodo_it = graph_data["nodos"].begin();
     double primera_lat = primer_nodo_it.value()["lat"];
@@ -205,6 +205,9 @@ void leerNodos(json& graph_data) {
 
     const double metrosPorGradoLat = 111319.0;
     const double metrosPorGradoLon = 111319.0 * std::cos(primera_lat * M_PI / 180.0);
+
+    long long inicio = graph_data["inicio"], destino = graph_data["destino"];
+    bool inicioEncontrado = false, destinoEncontrado = false;
 
     std::cout << "Generando nodos... ";
     // Variables para crear el marco del grafo
@@ -224,12 +227,28 @@ void leerNodos(json& graph_data) {
             if (y > maxY) maxY = y;
 
             nodos.push_back(new Nodo(node_id, sf::Vector2f(x, y)));
+
+            if (!inicioEncontrado) {
+                if (inicio == nodos.back()->id) {
+                    nodoInicio = nodos.back();
+                    inicioEncontrado = true;
+                    continue;
+                }
+            }
+            if (!destinoEncontrado) {
+                if (destino == nodos.back()->id) {
+                    nodoDestino = nodos.back();
+                    destinoEncontrado = true;
+                    continue;
+                }
+            }
         }
         catch (std::exception& e) {
             std::cerr << "Error processing node: " << nodo_it.key() << " - " << e.what() << std::endl;
-            return;
+            return false;
         }
     }
+
     std::cout << nodos.size() << " nodos generados." << std::endl;
 
     marcoGrafo.setSize(sf::Vector2f((maxX - minX) * 1.1, (maxY - minY) * 1.1)); // 10% más grande
@@ -237,7 +256,56 @@ void leerNodos(json& graph_data) {
     marcoGrafo.setOutlineThickness(50);
     marcoGrafo.setOutlineColor(sf::Color::White);
     marcoGrafo.setFillColor(sf::Color::Transparent);
+    return true;
+}
 
+void leerArgs(std::vector <std::string> & args) {
+    std::string coord, lat, lon;
+    bool primeroLeido = false;
+
+    std::cout << "Inicio: ";
+    std::getline(std::cin, coord);
+    for (const auto& it : coord) {
+        if (!primeroLeido) {
+            if (it != ',') {
+                lat += it;
+            }
+            else {
+                primeroLeido = true;
+            }
+        }
+        else {
+            if (it != ' ') {
+                lon += it;
+            }
+        }
+    }
+    args[0] = lat;
+    args[1] = lon;
+
+    lat.clear();
+    lon.clear();
+    coord.clear();
+    primeroLeido = false;
+    std::cout << "Destino: ";
+    std::getline(std::cin, coord);
+    for (const auto& it : coord) {
+        if (!primeroLeido) {
+            if (it != ',') {
+                lat += it;
+            }
+            else {
+                primeroLeido = true;
+            }
+        }
+        else {
+            if (it != ' ') {
+                lon += it;
+            }
+        }
+    }
+    args[2] = lat;
+    args[3] = lon;
 }
 
 void inicializarView(sf::RenderWindow& window, sf::RectangleShape marcoGrafo) {
@@ -256,15 +324,24 @@ void inicializarView(sf::RenderWindow& window, sf::RectangleShape marcoGrafo) {
 }
 
 int main() {
+    std::vector<std::string> args(4);
+    leerArgs(args);
+
+    char archivoPython[] = "generarGrafo.py";
+    std::string command = std::string("python ") + archivoPython + " " + args[0] + " " + args[1] + " " + args[2] + " " + args[3];
+    std::cout << "Ejecutando " << archivoPython << "...";
+    system(command.c_str());
+    std::cout << " listo." << std::endl;
+    
     json graph_data;
 
-    cargarArchivoJSON(graph_data, "graph_data_v3.json");
-    leerNodos(graph_data);
-    leerArcos(graph_data);
+    if (!cargarArchivoJSON(graph_data, "grafo_data.json")) return -1;
+    if (!leerNodos(graph_data)) return -1;
+    if (!leerArcos(graph_data)) return -1;
 
-    bool generandoArcos = false;
+    bool dibujarArcos = false;
     bool algoritmoActivo = false;
-    const int nroNodosPorLoop = 10;
+    const int nroNodosPorLoop = 30;
     bool ctrlPresionado = false;
 	bool altPresionado = false;
     bool usandoHeuristico = true;
@@ -284,11 +361,8 @@ int main() {
     sf::View view = window.getView();
     sf::Vector2f lastMousePos;
 
-    // temp
-    nodoInicio = nodos[100];
     nodoInicio->circulo.setFillColor(sf::Color::Blue);
-    nodoFinal = nodos[10];
-    nodoFinal->circulo.setFillColor(sf::Color::Green);
+    nodoDestino->circulo.setFillColor(sf::Color::Green);
 
     sf::Clock clock;
     float delta = 0.f;
@@ -325,7 +399,7 @@ int main() {
                         seleccionarNodo(window.mapPixelToCoords(sf::Mouse::getPosition(window)), nodoInicio, sf::Color::Blue);
                     }
                     else if (altPresionado) {
-                        seleccionarNodo(window.mapPixelToCoords(sf::Mouse::getPosition(window)), nodoFinal, sf::Color::Green);
+                        seleccionarNodo(window.mapPixelToCoords(sf::Mouse::getPosition(window)), nodoDestino, sf::Color::Green);
                     }
                     else {
                         moving = true;
@@ -367,8 +441,8 @@ int main() {
 
             case sf::Event::KeyReleased:
                 if (event.key.code == sf::Keyboard::G) {
-                    generandoArcos = true;
-                    std::cout << "\nGenerando grafo...";
+                    dibujarArcos = true;
+                    std::cout << "\nDibujando grafo...";
                     nroArcosDibujar = 0;
                 }
                 else if (event.key.code == sf::Keyboard::N) {
@@ -381,12 +455,12 @@ int main() {
                     }
                 }
                 else if (event.key.code == sf::Keyboard::S) {
-                    if (nodoInicio == nullptr || nodoFinal == nullptr) {
+                    if (nodoInicio == nullptr || nodoDestino == nullptr) {
                         std::cout << "Seleccione los nodos de inicio y final." << std::endl;
                     }
                     else {
                         if (usandoHeuristico) {
-                            inicializarHeuristicos(nodoFinal->pos);
+                            inicializarHeuristicos(nodoDestino->pos);
                         }
                         nodoInicio->g = 0;
                         nodosPorVisitar.insert(nodoInicio);
@@ -408,21 +482,21 @@ int main() {
         window.clear(sf::Color::Black);
         window.setView(view);
 
-        if (generandoArcos) {
+        if (dibujarArcos) {
             if (nroArcosDibujar < arcos.size()) {
                 deltaArco += delta;
                 if (deltaArco >= tiempoGenerarArco) {
                     nroArcosDibujar += deltaArco / tiempoGenerarArco;
                     if (nroArcosDibujar >= arcos.size()) {
                         if (nroArcosDibujar != arcos.size()) nroArcosDibujar = arcos.size();
-                        std::cout << " grafo generado." << std::endl;
-                        generandoArcos = false;
+                        std::cout << " listo." << std::endl;
+                        dibujarArcos = false;
                     }
                     deltaArco = std::fmod(deltaArco, tiempoGenerarArco);
                 }
             }
             else {
-                generandoArcos = false;
+                dibujarArcos = false;
                 std::cout << " grafo generado." << std::endl;
             }
         }
@@ -451,8 +525,8 @@ int main() {
         if (nodoInicio != nullptr) {
             window.draw(nodoInicio->circulo);
         }
-        if (nodoFinal != nullptr) {
-            window.draw(nodoFinal->circulo);
+        if (nodoDestino != nullptr) {
+            window.draw(nodoDestino->circulo);
         }
 
         for (const auto& it : camino) {
