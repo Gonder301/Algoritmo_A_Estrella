@@ -24,7 +24,8 @@ grafo = ox.graph_from_point(centro_grafo, distancia, network_type="drive")
 inicio_nodo = ox.nearest_nodes(grafo, inicio_coord[1], inicio_coord[0])  # lon, lat
 destino_nodo = ox.nearest_nodes(grafo, destino_coord[1], destino_coord[0])  # lon, lat
 
-path = nx.astar_path(grafo, inicio_nodo, destino_nodo, weight="length")
+# Función del módulo networkx que devuelve una lista de los nodos del camino más corto usando A*
+# path = nx.astar_path(grafo, inicio_nodo, destino_nodo, weight="length")
 
 # Muestra y guarda una imagen del grafo y el camino más corto entre inicio y fin usando el algoritmo A*
 # fig, ax = ox.plot_graph_route(grafo, path, route_linewidth=6, route_color='b', node_size=0)
@@ -41,7 +42,7 @@ grafo_data = {
         {"primero": u, "segundo": v}
         for u, v, data in grafo.edges(data=True)
     ],
-    "path": path
+    # "path": path
 }
 
 # Guardar datos en JSON
