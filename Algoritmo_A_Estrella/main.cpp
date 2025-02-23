@@ -1,9 +1,6 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <unordered_map>
-#include <cmath>
-#include <queue>
 #include <set>
 #include <unordered_set>
 #include <SFML/Graphics.hpp>
@@ -41,21 +38,17 @@ struct CompararNodo {
     }
 };
 
-struct Arco {
-    sf::VertexArray linea;
-
-    Arco(sf::Vector2f pos1_, sf::Vector2f pos2_, const sf::Color& color_);
-};
-
-Arco::Arco(sf::Vector2f pos1_, sf::Vector2f pos2_, const sf::Color& color_) : linea(sf::Lines, 2) {
-    linea[0].color = color_;
-    linea[0].position = pos1_;
-    linea[1].color = color_;
-    linea[1].position = pos2_;
+sf::VertexArray* crearArco(sf::Vector2f pos1_, sf::Vector2f pos2_, const sf::Color& color_) {
+    sf::VertexArray* nuevo = new sf::VertexArray(sf::Lines, 2);
+    (*nuevo)[0].color = color_;
+    (*nuevo)[0].position = pos1_;
+    (*nuevo)[1].color = color_;
+    (*nuevo)[1].position = pos2_;
+    return nuevo;
 }
 
 std::vector<Nodo*> nodos;
-std::vector<Arco*> arcos;
+std::vector<sf::VertexArray*> arcos;
 sf::RectangleShape marcoGrafo;
 
 // Variables para el algoritmo A*
@@ -63,9 +56,10 @@ Nodo* nodoInicio = nullptr;
 Nodo* nodoDestino = nullptr;
 std::set<Nodo*, CompararNodo> nodosPorVisitar;
 std::unordered_set<Nodo*> nodosVisitados;
-std::vector<Arco*> camino;
+std::vector<sf::VertexArray*> arcosRecorridos;
+std::vector<sf::VertexArray*> camino;
 
-float dist(sf::Vector2f pos1, sf::Vector2f pos2) {
+float distanciaEuclidiana(sf::Vector2f pos1, sf::Vector2f pos2) {
     return std::sqrt(((pos2.x - pos1.x) * (pos2.x - pos1.x)) + ((pos2.y - pos1.y) * (pos2.y - pos1.y)));
 }
 
@@ -83,13 +77,13 @@ bool algoritm_A_Estrella() {
     for (auto& it : n->vecinos) {
         if (nodosVisitados.count(it)) continue;  // Si ya fue visitado, ignorarlo
 
-        temp_g = n->g + dist(it->pos, n->pos);
+        temp_g = n->g + distanciaEuclidiana(it->pos, n->pos);
         if (temp_g < it->g) {
             // Se actualiza solo si encontramos un mejor camino
             nodosPorVisitar.erase(it);  // IMPORTANTE: eliminarlo antes de modificar `g`
             it->g = temp_g;
             it->predecesor = n;
-            camino.push_back(new Arco(n->pos, it->pos, sf::Color::Magenta));
+            arcosRecorridos.push_back(crearArco(n->pos, it->pos, sf::Color::Magenta));
             nodosPorVisitar.insert(it);  // Reinsertar con el nuevo costo
         }
 
@@ -102,10 +96,42 @@ bool algoritm_A_Estrella() {
     return true;
 }
 
+void liberarMemoriaAlgoritmo() {
+    for (auto& it : arcosRecorridos) {
+        delete arcosRecorridos.back();
+        arcosRecorridos.pop_back();
+    }
+
+    for (auto& it : camino) {
+        delete camino.back();
+        camino.pop_back();
+    }
+}
+
+void resetear() {
+    liberarMemoriaAlgoritmo();
+    nodosPorVisitar.clear();
+    nodosVisitados.clear();
+
+    for (auto& it : nodos) {
+        it->predecesor = nullptr;
+        it->g = std::numeric_limits<float>::infinity();
+        it->h = 0.f;
+    }
+}
+
+void generarCamino() {
+    Nodo* it = nodoDestino;
+    do {
+        camino.push_back(crearArco(it->pos, it->predecesor->pos, sf::Color::Magenta));
+        it = it->predecesor;
+    } while (it->predecesor != nullptr);
+}
+
 // Inicializa los valores h de TODOS los nodos del grafo
 void inicializarHeuristicos(const sf::Vector2f& nodoFinalPos) {
     for (auto& it : nodos) {
-        it->h = dist(it->pos, nodoFinalPos);
+        it->h = distanciaEuclidiana(it->pos, nodoFinalPos);
     }
 }
 
@@ -130,6 +156,55 @@ void seleccionarNodo(sf::Vector2f mousePos, Nodo*& nodoPtr, const sf::Color& col
         }
     }
     std::cout << "No se selecciono ningun nodo." << std::endl;
+}
+
+void leerArgs(std::vector<std::string>& args) {
+    std::string coord, lat, lon;
+    bool primeroLeido = false;
+
+    std::cout << "Inicio: ";
+    std::getline(std::cin, coord);
+    for (const auto& it : coord) {
+        if (!primeroLeido) {
+            if (it != ',') {
+                lat += it;
+            }
+            else {
+                primeroLeido = true;
+            }
+        }
+        else {
+            if (it != ' ') {
+                lon += it;
+            }
+        }
+    }
+    args[0] = lat;
+    args[1] = lon;
+
+    lat.clear();
+    lon.clear();
+    coord.clear();
+    primeroLeido = false;
+    std::cout << "Destino: ";
+    std::getline(std::cin, coord);
+    for (const auto& it : coord) {
+        if (!primeroLeido) {
+            if (it != ',') {
+                lat += it;
+            }
+            else {
+                primeroLeido = true;
+            }
+        }
+        else {
+            if (it != ' ') {
+                lon += it;
+            }
+        }
+    }
+    args[2] = lat;
+    args[3] = lon;
 }
 
 bool cargarArchivoJSON(json& graph_data, const char nombre[]) {
@@ -186,7 +261,7 @@ bool leerArcos(json& graph_data) {
                 return false;
             }
 
-            arcos.push_back(new Arco(src_ptr->pos, tgt_ptr->pos, sf::Color(127, 127, 127)));
+            arcos.push_back(crearArco(src_ptr->pos, tgt_ptr->pos, sf::Color(127, 127, 127)));
         }
         catch (std::exception& e) {
             std::cerr << "Error procesando arco: " << e.what() << std::endl;
@@ -259,55 +334,6 @@ bool leerNodos(json& graph_data) {
     return true;
 }
 
-void leerArgs(std::vector <std::string> & args) {
-    std::string coord, lat, lon;
-    bool primeroLeido = false;
-
-    std::cout << "Inicio: ";
-    std::getline(std::cin, coord);
-    for (const auto& it : coord) {
-        if (!primeroLeido) {
-            if (it != ',') {
-                lat += it;
-            }
-            else {
-                primeroLeido = true;
-            }
-        }
-        else {
-            if (it != ' ') {
-                lon += it;
-            }
-        }
-    }
-    args[0] = lat;
-    args[1] = lon;
-
-    lat.clear();
-    lon.clear();
-    coord.clear();
-    primeroLeido = false;
-    std::cout << "Destino: ";
-    std::getline(std::cin, coord);
-    for (const auto& it : coord) {
-        if (!primeroLeido) {
-            if (it != ',') {
-                lat += it;
-            }
-            else {
-                primeroLeido = true;
-            }
-        }
-        else {
-            if (it != ' ') {
-                lon += it;
-            }
-        }
-    }
-    args[2] = lat;
-    args[3] = lon;
-}
-
 void inicializarView(sf::RenderWindow& window, sf::RectangleShape marcoGrafo) {
     sf::Vector2f viewSize(marcoGrafo.getSize().x * 1.1f, marcoGrafo.getSize().y * 1.1f);
 
@@ -324,15 +350,15 @@ void inicializarView(sf::RenderWindow& window, sf::RectangleShape marcoGrafo) {
 }
 
 int main() {
-    std::vector<std::string> args(4);
+    /*std::vector<std::string> args(4);
     leerArgs(args);
 
     char archivoPython[] = "generarGrafo.py";
     std::string command = std::string("python ") + archivoPython + " " + args[0] + " " + args[1] + " " + args[2] + " " + args[3];
     std::cout << "Ejecutando " << archivoPython << "...";
     system(command.c_str());
-    std::cout << " listo." << std::endl;
-    
+    std::cout << " listo." << std::endl;*/
+
     json graph_data;
 
     if (!cargarArchivoJSON(graph_data, "grafo_data.json")) return -1;
@@ -341,7 +367,8 @@ int main() {
 
     bool dibujarArcos = false;
     bool algoritmoActivo = false;
-    const int nroNodosPorLoop = 30;
+    bool algoritmoFinalizado = false;
+    const int nroNodosPorLoop = 30; // A mayor valor, al algoritmo se ejecutará más rapido
     bool ctrlPresionado = false;
 	bool altPresionado = false;
     bool usandoHeuristico = true;
@@ -367,6 +394,11 @@ int main() {
     sf::Clock clock;
     float delta = 0.f;
     float tiempoAlgoritmo = 0.f;
+    std::cout << "\nControles:" << std::endl;
+    std::cout << "G: mostrar grafo" << std::endl;
+    std::cout << "TAB: cambiar algoritmo" << std::endl;
+    std::cout << "S: iniciar algoritmo" << std::endl;
+    std::cout << "R: reiniciar\n\n";
     std::cout << "Algoritmo activo: " << ((usandoHeuristico) ? "A*" : "Dijkstra") << std::endl;
 
     while (window.isOpen()) {
@@ -471,6 +503,12 @@ int main() {
                     usandoHeuristico = !usandoHeuristico;
                     std::cout << "Algoritmo activo: " << ((usandoHeuristico) ? "A*" : "Dijkstra") << std::endl;
                 }
+                else if (event.key.code == sf::Keyboard::R) {
+                    resetear();
+                    algoritmoActivo = false;
+                    algoritmoFinalizado = false;
+                    tiempoAlgoritmo = 0.f;
+                }
             }
 
         }
@@ -505,6 +543,8 @@ int main() {
             for (int i = nroNodosPorLoop; i != 0; --i) {
                 if (!(algoritmoActivo = algoritm_A_Estrella())) {
                     std::cout << "Tiempo de ejecucion: " << tiempoAlgoritmo << std::endl;
+                    algoritmoFinalizado = true;
+                    generarCamino();
                     break;
                 }
             }
@@ -513,7 +553,7 @@ int main() {
         window.draw(marcoGrafo);
 
         for (int i = 0; i != nroArcosDibujar; i++) {
-            window.draw(arcos[i]->linea);
+            window.draw(*arcos[i]);
         }
 
         if (mostrarNodos) {
@@ -529,8 +569,16 @@ int main() {
             window.draw(nodoDestino->circulo);
         }
 
-        for (const auto& it : camino) {
-            window.draw(it->linea);
+        if (algoritmoActivo) {
+            for (const auto& it : arcosRecorridos) {
+                window.draw(*it);
+            }
+        }
+
+        if (algoritmoFinalizado) {
+            for (const auto& it : camino) {
+                window.draw(*it);
+            }
         }
 
         window.display();
