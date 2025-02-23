@@ -3,7 +3,7 @@
 ## Dijkstra vs A*
 ![Demo](demo3.gif)
 
-> **Nota:** Ambos algoritmos visitan solo 10 nodos por cada iteración del *mainloop* (se puede modificar).<br>La diferencia que se tiene que considerar es la proporción entre los timpos y no los tiempos en si.
+> **Nota:** Ambos algoritmos visitan 30 nodos por cada iteración del *mainloop* (se puede modificar).<br>La diferencia que se tiene que considerar es la proporción entre los timpos y no los tiempos en si.
 
 ## *To-Do* Lista
 + [x] ~~Implenentar el algoritmo A+~~
