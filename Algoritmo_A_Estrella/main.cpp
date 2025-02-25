@@ -19,7 +19,7 @@ struct Nodo {
     // Campos para el algoritmo A*
     Nodo* predecesor;
     float g; // Costo real desde el nodo inicial
-    float h; // Costo estimado hasta llegar al nodo final
+    float h; // Costo estimado desde este nodo hasta el nodo destino
 
     Nodo(long long id_, sf::Vector2f pos_);
 };
@@ -63,7 +63,7 @@ float distanciaEuclidiana(sf::Vector2f pos1, sf::Vector2f pos2) {
     return std::sqrt(((pos2.x - pos1.x) * (pos2.x - pos1.x)) + ((pos2.y - pos1.y) * (pos2.y - pos1.y)));
 }
 
-bool algoritm_A_Estrella() {
+bool algoritmo_A_Estrella() {
     if (nodosPorVisitar.empty()) {
         std::cout << "No se encontró ningún camino entre los nodos." << std::endl;
         return false;
@@ -71,7 +71,6 @@ bool algoritm_A_Estrella() {
 
     Nodo* n = *nodosPorVisitar.begin();  // Tomar el nodo con menor costo f = g + h
     nodosPorVisitar.erase(nodosPorVisitar.begin());  // Eliminarlo del conjunto
-    nodosVisitados.insert(n);  // Marcarlo como visitado
 
     float temp_g = 0.f;
     for (auto& it : n->vecinos) {
@@ -80,21 +79,27 @@ bool algoritm_A_Estrella() {
         temp_g = n->g + distanciaEuclidiana(it->pos, n->pos);
         if (temp_g < it->g) {
             // Se actualiza solo si encontramos un mejor camino
-            nodosPorVisitar.erase(it);  // IMPORTANTE: eliminarlo antes de modificar `g`
+            nodosPorVisitar.erase(it);  // IMPORTANTE: eliminarlo antes de modificar 'g'
             it->g = temp_g;
             it->predecesor = n;
             arcosRecorridos.push_back(crearArco(n->pos, it->pos, sf::Color::Magenta));
             nodosPorVisitar.insert(it);  // Reinsertar con el nuevo costo
         }
-
-        if (it->id == nodoDestino->id) {
-            std::cout << "Bingo!" << std::endl;
-            return false;  // Terminamos porque encontramos el nodo final
-        }
     }
 
-    return true;
+    nodosVisitados.insert(n);  // Marcar nodo como visitado
+
+    if (n != nodoDestino) {
+        return true;
+    }
+    else {
+        std::cout << "Algoritmo finalizado." << std::endl;
+        return false;
+    }
+
 }
+
+
 
 void liberarMemoriaAlgoritmo() {
     for (auto& it : arcosRecorridos) {
@@ -541,7 +546,7 @@ int main() {
 
         if (algoritmoActivo) {
             for (int i = nroNodosPorLoop; i != 0; --i) {
-                if (!(algoritmoActivo = algoritm_A_Estrella())) {
+                if (!(algoritmoActivo = algoritmo_A_Estrella())) {
                     std::cout << "Tiempo de ejecucion: " << tiempoAlgoritmo << std::endl;
                     algoritmoFinalizado = true;
                     generarCamino();
